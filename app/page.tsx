@@ -14,6 +14,7 @@ export default function HomePage() {
   const [name, setName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!student) {
@@ -21,12 +22,33 @@ export default function HomePage() {
     }
   }, [student]);
 
+  const createLocalStudent = (name: string, avatar: number) => {
+    const localId = `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const localStudent = {
+      id: localId,
+      name: name.trim(),
+      avatar,
+      stars: 0,
+      streak: 0,
+      total_questions: 0,
+      correct_answers: 0,
+      created_at: new Date().toISOString(),
+    };
+    localStorage.setItem('studentId', localId);
+    localStorage.setItem('studentStars', '0');
+    localStorage.setItem('studentData', JSON.stringify(localStudent));
+    setStudent(localStudent);
+    setShowSetup(false);
+    return localStudent;
+  };
+
   const handleCreateStudent = async () => {
     if (!name.trim()) return;
     setLoading(true);
+    setError(null);
 
     try {
-      const { data, error } = await supabase
+      const { data, error: supabaseError } = await supabase
         .from('students')
         .insert({
           name: name.trim(),
@@ -39,7 +61,15 @@ export default function HomePage() {
         .select()
         .single();
 
-      if (error) throw error;
+      if (supabaseError) {
+        console.error('Supabase error details:', {
+          message: supabaseError.message,
+          code: supabaseError.code,
+          details: supabaseError.details,
+          hint: supabaseError.hint,
+        });
+        throw supabaseError;
+      }
 
       if (data) {
         localStorage.setItem('studentId', data.id);
@@ -47,11 +77,16 @@ export default function HomePage() {
         setStudent(data);
         setShowSetup(false);
       }
-    } catch (error) {
-      console.error('Error creating student:', error);
+    } catch (err) {
+      console.error('Error creating student:', err);
+      setError('حدث خطأ في الاتصال. يمكنك المتابعة محلياً.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleContinueLocally = () => {
+    createLocalStudent(name, selectedAvatar);
   };
 
   const tableNumbers = Array.from({ length: 12 }, (_, i) => i + 1);
@@ -283,6 +318,18 @@ export default function HomePage() {
               >
                 {loading ? 'جاري الإنشاء...' : 'ابدأ المغامرة!'}
               </button>
+
+              {error && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <p className="text-red-600 text-sm mb-3">{error}</p>
+                  <button
+                    onClick={handleContinueLocally}
+                    className="w-full bg-gray-600 hover:bg-gray-700 text-white py-3 rounded-xl font-medium text-sm"
+                  >
+                    المتابعة محلياً
+                  </button>
+                </div>
+              )}
             </div>
           </motion.div>
         </div>
