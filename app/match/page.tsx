@@ -1,97 +1,122 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, X, RefreshCw, Trophy, Star, Shuffle, Target } from 'lucide-react';
-import { findEqualProducts, shuffleArray } from '@/lib/utils';
+import { Check, X, RefreshCw, Trophy, Star, TriangleAlert as AlertTriangle } from 'lucide-react';
+import { shuffleArray } from '@/lib/utils';
 import { useStudent } from '@/lib/student-context';
 
-type ActivityMode = 'select' | 'learn' | 'multiple' | 'find-another' | 'complete-group' | 'matching' | 'timed';
+type ActivityMode = 'select' | 'learn' | 'multiple' | 'complete-group' | 'matching' | 'timed';
 
-interface Question {
-  target: number;
-  equations: { a: number; b: number; equation: string; isCorrect: boolean }[];
+// Define equations with their actual results - NEVER use index for validation
+interface Equation {
+  a: number;
+  b: number;
+  result: number; // ALWAYS computed as a * b
+  equation: string;
 }
 
 // Learning progression starting from Table 3
 const learningProgression = [
-  { result: 12, tables: [3, 2], description: 'النتيجة 12 - جداول 2 و 3' },
-  { result: 18, tables: [3, 2], description: 'النتيجة 18 - جداول 2 و 3' },
-  { result: 24, tables: [3, 2, 4], description: 'النتيجة 24 - جداول 2 و 3 و 4' },
-  { result: 36, tables: [3, 4, 6], description: 'النتيجة 36 - جداول 3 و 4 و 6' },
-  { result: 48, tables: [3, 4, 6, 8], description: 'النتيجة 48 - جداول 3 و 4 و 6 و 8' },
-  { result: 60, tables: [3, 4, 5, 6], description: 'النتيجة 60 - جداول 3 و 4 و 5 و 6' },
-  { result: 72, tables: [3, 6, 8, 9], description: 'النتيجة 72 - جداول 3 و 6 و 8 و 9' },
-  { result: 96, tables: [3, 6, 8], description: 'النتيجة 96 - جداول 6 و 8' },
+  { target: 12, description: 'النتيجة 12 - جداول 2 و 3 و 4 و 6' },
+  { target: 18, description: 'النتيجة 18 - جداول 2 و 3 و 6 و 9' },
+  { target: 24, description: 'النتيجة 24 - جداول 2 و 3 و 4 و 6 و 8' },
+  { target: 36, description: 'النتيجة 36 - جداول 3 و 4 و 6 و 9' },
+  { target: 48, description: 'النتيجة 48 - جداول 4 و 6 و 8' },
+  { target: 60, description: 'النتيجة 60 - جداول 5 و 6' },
+  { target: 72, description: 'النتيجة 72 - جداول 6 و 8 و 9' },
+  { target: 96, description: 'النتيجة 96 - جداول 8 و 12' },
 ];
 
-function generateLearnQuestion(learningIndex: number): Question {
-  const target = learningProgression[learningIndex];
-  const correctPairs = findEqualProducts(target.result);
-  const options: { a: number; b: number; equation: string; isCorrect: boolean }[] = [];
-
-  // Add all correct pairs
-  correctPairs.forEach(({ a, b }) => {
-    options.push({
-      a,
-      b,
-      equation: `${a} × ${b}`,
-      isCorrect: true,
-    });
-  });
-
-  // Add some incorrect pairs
-  let attempts = 0;
-  while (options.length < correctPairs.length + 3 && attempts < 30) {
-    const a = Math.floor(Math.random() * 12) + 1;
-    const b = Math.floor(Math.random() * 12) + 1;
-    if (a * b !== target.result) {
-      const exists = options.some(o => o.a === a && o.b === b);
-      if (!exists) {
-        options.push({
+// Generate ALL equations that result in a given target (1-12 factors only)
+function generateEquationsForTarget(target: number): Equation[] {
+  const equations: Equation[] = [];
+  for (let a = 1; a <= 12; a++) {
+    for (let b = 1; b <= 12; b++) {
+      // ONLY accept if the actual multiplication result equals target
+      if (a * b === target) {
+        equations.push({
           a,
           b,
+          result: a * b, // Mathematically computed
           equation: `${a} × ${b}`,
-          isCorrect: false,
+        });
+      }
+    }
+  }
+  return equations;
+}
+
+// Generate wrong equations (different result)
+function generateWrongEquations(target: number, count: number): Equation[] {
+  const wrong: Equation[] = [];
+  let attempts = 0;
+
+  while (wrong.length < count && attempts < 100) {
+    const a = Math.floor(Math.random() * 12) + 1;
+    const b = Math.floor(Math.random() * 12) + 1;
+    const result = a * b; // COMPUTE ACTUAL RESULT
+
+    // ONLY add if result is DIFFERENT from target
+    if (result !== target) {
+      const exists = wrong.some(e => e.a === a && e.b === b);
+      if (!exists) {
+        wrong.push({
+          a,
+          b,
+          result, // Actual computed result
+          equation: `${a} × ${b}`,
         });
       }
     }
     attempts++;
   }
 
-  return {
-    target: target.result,
-    equations: shuffleArray(options),
-  };
+  return wrong;
 }
 
-function generateMultipleChoiceQuestion(): Question {
-  const productIndex = Math.floor(Math.random() * learningProgression.length);
-  return generateLearnQuestion(productIndex);
+// VALIDATE: Check if equation belongs to target using multiplication result
+function equationBelongsToTarget(equation: Equation, target: number): boolean {
+  // ALWAYS compute actual result - never use index or position
+  const computedResult = equation.a * equation.b;
+  return computedResult === target;
 }
 
-function generateFindAnotherQuestion(): Question {
-  const productIndex = Math.floor(Math.random() * learningProgression.length);
-  const target = learningProgression[productIndex];
-  const correctPairs = findEqualProducts(target.result);
+// Generate options for multiple choice
+function generateMultipleChoiceOptions(target: number): Equation[] {
+  const correctEquations = generateEquationsForTarget(target);
+  const wrongEquations = generateWrongEquations(target, 3);
 
-  // Pick one correct equation to show
-  const shownPair = correctPairs[Math.floor(Math.random() * correctPairs.length)];
-
-  return {
-    target: target.result,
-    equations: [
-      { a: shownPair.a, b: shownPair.b, equation: `${shownPair.a} × ${shownPair.b}`, isCorrect: true },
-    ],
-  };
+  // Combine and shuffle - but each equation carries its ACTUAL result
+  const allOptions = [...correctEquations, ...wrongEquations];
+  return shuffleArray(allOptions);
 }
 
-function generateMatchingQuestion(): Question {
-  const productIndex = Math.floor(Math.random() * learningProgression.length);
-  const target = learningProgression[productIndex];
+// Generate a complete-group question with multiple targets
+function generateCompleteGroupQuestion(): {
+  groups: { target: number; equations: Equation[] }[];
+  availableEquations: Equation[];
+} {
+  // Select 3-4 targets
+  const numGroups = Math.floor(Math.random() * 2) + 3;
+  const selectedTargets = shuffleArray([...learningProgression])
+    .slice(0, numGroups)
+    .map(t => t.target);
+
+  const groups: { target: number; equations: Equation[] }[] = [];
+  const allEquations: Equation[] = [];
+
+  selectedTargets.forEach(target => {
+    const equations = generateEquationsForTarget(target);
+    groups.push({ target, equations: [] });
+    equations.forEach(eq => {
+      allEquations.push(eq);
+    });
+  });
+
   return {
-    target: target.result,
-    equations: [],
+    groups,
+    availableEquations: shuffleArray(allEquations),
   };
 }
 
@@ -99,26 +124,29 @@ export default function MatchPage() {
   const { updateStars } = useStudent();
   const [mode, setMode] = useState<ActivityMode>('select');
   const [learningIndex, setLearningIndex] = useState(0);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentTarget, setCurrentTarget] = useState<number>(12);
+  const [currentOptions, setCurrentOptions] = useState<Equation[]>([]);
   const [selections, setSelections] = useState<Set<string>>(new Set());
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
   const [gameComplete, setGameComplete] = useState(false);
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [timeLeft, setTimeLeft] = useState(60);
-  const [isRunning, setIsRunning] = useState(false);
-  const [findAnotherInput, setFindAnotherInput] = useState('');
-  const [timedCorrect, setTimedCorrect] = useState(0);
-  const [matchingCards, setMatchingCards] = useState<{ id: number; content: string; pairId: number; flipped: boolean; matched: boolean }[]>([]);
+  const [questionNumber, setQuestionNumber] = useState(0);
+  const [warningMessage, setWarningMessage] = useState<string | null>(null);
+
+  // Complete Group State
+  const [groups, setGroups] = useState<{ target: number; equations: Equation[] }[]>([]);
+  const [availableEquations, setAvailableEquations] = useState<Equation[]>([]);
+  const [selectedEquation, setSelectedEquation] = useState<Equation | null>(null);
+
+  // Matching Game State
+  const [matchingCards, setMatchingCards] = useState<{ id: number; equation: Equation; flipped: boolean; matched: boolean }[]>([]);
   const [flippedCards, setFlippedCards] = useState<number[]>([]);
   const [matches, setMatches] = useState(0);
 
-  const currentQuestion = questions[currentIndex];
-  const correctPairs = useMemo(() => {
-    if (!currentQuestion) return [];
-    return findEqualProducts(currentQuestion.target);
-  }, [currentQuestion]);
+  // Timed Mode State
+  const [timeLeft, setTimeLeft] = useState(60);
+  const [isRunning, setIsRunning] = useState(false);
+  const [timedCorrect, setTimedCorrect] = useState(0);
 
   // Timer for timed mode
   useEffect(() => {
@@ -135,50 +163,154 @@ export default function MatchPage() {
     return () => clearInterval(interval);
   }, [isRunning, timeLeft, timedCorrect, updateStars]);
 
+  // Validate selections - ALWAYS compute actual results
+  const validateSelections = useCallback(() => {
+    let correct = 0;
+    let incorrect = 0;
+
+    selections.forEach(equationStr => {
+      const eq = currentOptions.find(e => e.equation === equationStr);
+      if (eq) {
+        // COMPUTE actual result and compare to target
+        const computedResult = eq.a * eq.b;
+        if (computedResult === currentTarget) {
+          correct++;
+        } else {
+          incorrect++;
+        }
+      }
+    });
+
+    return { correct, incorrect };
+  }, [selections, currentOptions, currentTarget]);
+
   const startMode = (newMode: ActivityMode) => {
     setMode(newMode);
     setScore(0);
     setGameComplete(false);
     setShowResult(false);
     setSelections(new Set());
-    setCurrentIndex(0);
-    setSelectedAnswer(null);
-    setTimedCorrect(0);
+    setQuestionNumber(0);
+    setWarningMessage(null);
 
     if (newMode === 'learn') {
       setLearningIndex(0);
-      const q = generateLearnQuestion(0);
-      setQuestions([q]);
+      const target = learningProgression[0].target;
+      setCurrentTarget(target);
+      setCurrentOptions(generateMultipleChoiceOptions(target));
     } else if (newMode === 'multiple') {
-      const qs = Array.from({ length: 5 }, () => generateMultipleChoiceQuestion());
-      setQuestions(qs);
-    } else if (newMode === 'find-another') {
-      const qs = Array.from({ length: 5 }, () => generateFindAnotherQuestion());
-      setQuestions(qs);
+      const idx = Math.floor(Math.random() * learningProgression.length);
+      const target = learningProgression[idx].target;
+      setCurrentTarget(target);
+      setCurrentOptions(generateMultipleChoiceOptions(target));
+    } else if (newMode === 'complete-group') {
+      const question = generateCompleteGroupQuestion();
+      setGroups(question.groups);
+      setAvailableEquations(question.availableEquations);
+      setSelectedEquation(null);
+    } else if (newMode === 'matching') {
+      initMatchingGame();
     } else if (newMode === 'timed') {
       setTimeLeft(60);
       setIsRunning(true);
-      const qs = Array.from({ length: 20 }, () => generateMultipleChoiceQuestion());
-      setQuestions(qs);
-    } else if (newMode === 'matching') {
-      initMatchingGame();
+      setTimedCorrect(0);
+      nextTimedQuestion();
     }
   };
 
-  const initMatchingGame = () => {
-    const productIndex = Math.floor(Math.random() * learningProgression.length);
-    const target = learningProgression[productIndex];
-    const pairs = findEqualProducts(target.result).slice(0, 4);
+  const nextTimedQuestion = () => {
+    const idx = Math.floor(Math.random() * learningProgression.length);
+    const target = learningProgression[idx].target;
+    setCurrentTarget(target);
+    setCurrentOptions(generateMultipleChoiceOptions(target).slice(0, 4));
+  };
 
-    const cards: { id: number; content: string; pairId: number; flipped: boolean; matched: boolean }[] = [];
-    pairs.forEach((pair, idx) => {
-      cards.push({ id: idx * 2, content: `${pair.a} × ${pair.b}`, pairId: idx, flipped: false, matched: false });
-      cards.push({ id: idx * 2 + 1, content: `${target.result}`, pairId: idx, flipped: false, matched: false });
+  const initMatchingGame = () => {
+    const target = learningProgression[Math.floor(Math.random() * learningProgression.length)].target;
+    const equations = generateEquationsForTarget(target).slice(0, 4);
+
+    const cards: { id: number; equation: Equation; flipped: boolean; matched: boolean }[] = [];
+    equations.forEach((eq, idx) => {
+      cards.push({
+        id: idx * 2,
+        equation: eq,
+        flipped: false,
+        matched: false,
+      });
+      cards.push({
+        id: idx * 2 + 1,
+        equation: { a: eq.result, b: 0, result: eq.result, equation: `${eq.result}` },
+        flipped: false,
+        matched: false,
+      });
     });
 
     setMatchingCards(shuffleArray(cards));
     setFlippedCards([]);
     setMatches(0);
+    setCurrentTarget(target);
+  };
+
+  const handleToggle = (equationStr: string) => {
+    if (showResult) return;
+    setWarningMessage(null);
+
+    setSelections((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(equationStr)) {
+        newSet.delete(equationStr);
+      } else {
+        newSet.add(equationStr);
+      }
+      return newSet;
+    });
+  };
+
+  const handleCheck = () => {
+    setShowResult(true);
+
+    const { correct, incorrect } = validateSelections();
+
+    // Score: +1 for correct, -1 for incorrect (minimum 0)
+    const netScore = Math.max(0, correct - incorrect + 1); // +1 bonus for all correct
+    setScore(prev => prev + netScore);
+  };
+
+  const handleNext = () => {
+    if (mode === 'learn') {
+      if (learningIndex < learningProgression.length - 1) {
+        const nextIndex = learningIndex + 1;
+        setLearningIndex(nextIndex);
+        const target = learningProgression[nextIndex].target;
+        setCurrentTarget(target);
+        setCurrentOptions(generateMultipleChoiceOptions(target));
+        setSelections(new Set());
+        setShowResult(false);
+      } else {
+        setGameComplete(true);
+        updateStars(score);
+      }
+    } else if (mode === 'multiple') {
+      setQuestionNumber(prev => prev + 1);
+      if (questionNumber < 4) {
+        const idx = Math.floor(Math.random() * learningProgression.length);
+        const target = learningProgression[idx].target;
+        setCurrentTarget(target);
+        setCurrentOptions(generateMultipleChoiceOptions(target));
+        setSelections(new Set());
+        setShowResult(false);
+      } else {
+        setGameComplete(true);
+        updateStars(score);
+      }
+    } else if (mode === 'complete-group') {
+      // Generate new question
+      const question = generateCompleteGroupQuestion();
+      setGroups(question.groups);
+      setAvailableEquations(question.availableEquations);
+      setSelectedEquation(null);
+      setShowResult(false);
+    }
   };
 
   const handleCardClick = (cardId: number) => {
@@ -196,28 +328,35 @@ export default function MatchPage() {
     setFlippedCards(newFlipped);
 
     if (newFlipped.length === 2) {
-      const [first, second] = newFlipped;
-      const card1 = matchingCards.find((c) => c.id === first);
-      const card2 = newCards.find((c) => c.id === second);
+      const [firstId, secondId] = newFlipped;
+      const card1 = matchingCards.find((c) => c.id === firstId);
+      const card2 = newCards.find((c) => c.id === secondId);
 
-      if (card1 && card2 && card1.pairId === card2.pairId) {
-        setMatchingCards((prev) =>
-          prev.map((c) =>
-            c.id === first || c.id === second ? { ...c, matched: true } : c
-          )
-        );
-        setMatches((prev) => prev + 1);
-        updateStars(1);
+      if (card1 && card2) {
+        // VALIDATE using actual computation - NEVER use index
+        const result1 = card1.equation.a * (card1.equation.b || 1);
+        const result2 = card2.equation.result;
 
-        if (matches + 1 === 4) {
-          setGameComplete(true);
+        // Match if results are equal
+        if (result1 === result2) {
+          setMatchingCards((prev) =>
+            prev.map((c) =>
+              c.id === firstId || c.id === secondId ? { ...c, matched: true } : c
+            )
+          );
+          setMatches((prev) => prev + 1);
+          updateStars(1);
+
+          if (matches + 1 === 4) {
+            setGameComplete(true);
+          }
         }
       }
 
       setTimeout(() => {
         setMatchingCards((prev) =>
           prev.map((c) =>
-            c.id === first || c.id === second ? { ...c, flipped: false } : c
+            c.id === firstId || c.id === secondId ? { ...c, flipped: false } : c
           )
         );
         setFlippedCards([]);
@@ -225,108 +364,64 @@ export default function MatchPage() {
     }
   };
 
-  const handleToggle = (equation: string) => {
-    if (showResult) return;
-
-    setSelections((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(equation)) {
-        newSet.delete(equation);
-      } else {
-        newSet.add(equation);
-      }
-      return newSet;
-    });
-  };
-
-  const handleCheck = () => {
-    setShowResult(true);
-
-    let correct = 0;
-    const correctEquations = currentQuestion.equations
-      .filter(eq => eq.isCorrect)
-      .map(eq => eq.equation);
-
-    selections.forEach(sel => {
-      if (correctEquations.includes(sel)) {
-        correct++;
-      }
-    });
-
-    selections.forEach(sel => {
-      const eq = currentQuestion.equations.find(e => e.equation === sel);
-      if (eq && !eq.isCorrect) {
-        correct -= 1;
-      }
-    });
-
-    const allCorrectSelected = correctEquations.every(eq => selections.has(eq));
-    if (allCorrectSelected) {
-      correct += 1;
+  // Complete Group - Drop equation into group - VALIDATE by actual result
+  const handleDropEquation = (targetGroup: number) => {
+    if (!selectedEquation) {
+      setWarningMessage('اختر معادلة أولاً');
+      return;
     }
 
-    setScore(prev => prev + Math.max(0, correct));
-  };
+    // CRITICAL: Compute actual result and validate
+    const computedResult = selectedEquation.a * selectedEquation.b;
 
-  const handleNext = () => {
-    if (mode === 'learn') {
-      // Move to next learning item or complete
-      if (learningIndex < learningProgression.length - 1) {
-        setLearningIndex(learningIndex + 1);
-        const q = generateLearnQuestion(learningIndex + 1);
-        setQuestions([q]);
-        setSelections(new Set());
-        setShowResult(false);
-      } else {
-        setGameComplete(true);
-        updateStars(score);
+    if (computedResult !== targetGroup) {
+      // INVALID placement - show warning
+      setWarningMessage(`خطأ! ${selectedEquation.equation} = ${computedResult}، وليس ${targetGroup}`);
+      return;
+    }
+
+    // VALID placement - equation result matches group target
+    setWarningMessage(null);
+
+    // Add equation to the correct group
+    setGroups(prev => prev.map(g => {
+      if (g.target === targetGroup) {
+        const alreadyExists = g.equations.some(e => e.equation === selectedEquation.equation);
+        if (!alreadyExists) {
+          return { ...g, equations: [...g.equations, selectedEquation] };
+        }
       }
-    } else if (mode === 'timed') {
-      // Timed mode handles itself
-    } else {
-      if (currentIndex < questions.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-        setSelections(new Set());
-        setShowResult(false);
-        setSelectedAnswer(null);
-        setFindAnotherInput('');
-      } else {
-        setGameComplete(true);
-        updateStars(score);
-      }
+      return g;
+    }));
+
+    // Remove from available
+    setAvailableEquations(prev => prev.filter(e => e.equation !== selectedEquation.equation));
+    setSelectedEquation(null);
+
+    // Check if all equations are placed
+    const totalPlaced = groups.reduce((sum, g) => sum + g.equations.length, 0) + 1;
+    const totalNeeded = groups.length * 2; // Average 2 equations per group
+
+    if (availableEquations.length === 1) {
+      // Almost done
+      setScore(prev => prev + groups.length);
     }
   };
 
-  const handleMultipleChoice = (equation: string) => {
-    setSelectedAnswer(equation);
-    setShowResult(true);
-    const eq = currentQuestion.equations.find(e => e.equation === equation);
-    if (eq?.isCorrect) {
-      setScore(prev => prev + 1);
+  // Timed mode answer
+  const handleTimedAnswer = (equationStr: string) => {
+    const eq = currentOptions.find(e => e.equation === equationStr);
+    if (eq) {
+      // COMPUTE actual result
+      const computedResult = eq.a * eq.b;
+      if (computedResult === currentTarget) {
+        setTimedCorrect(prev => prev + 1);
+      }
     }
-  };
 
-  const handleFindAnother = () => {
-    const [a, b] = findAnotherInput.split('×').map(s => parseInt(s.trim(), 10));
-    const isCorrect = correctPairs.some(p => p.a === a && p.b === b) &&
-      !currentQuestion.equations.some(e => e.a === a && e.b === b);
-
-    setShowResult(true);
-    if (isCorrect) {
-      setScore(prev => prev + 1);
-    }
-    setTimeout(() => {
-      handleNext();
-    }, 1000);
-  };
-
-  const handleTimedAnswer = (equation: string) => {
-    const eq = currentQuestion.equations.find(e => e.equation === equation);
-    if (eq?.isCorrect) {
-      setTimedCorrect(prev => prev + 1);
-    }
-    if (currentIndex < questions.length - 1) {
-      setCurrentIndex(prev => prev + 1);
+    if (questionNumber < 19) {
+      setQuestionNumber(prev => prev + 1);
+      nextTimedQuestion();
       setSelections(new Set());
     } else {
       setIsRunning(false);
@@ -353,7 +448,6 @@ export default function MatchPage() {
           </motion.div>
 
           <div className="grid md:grid-cols-2 gap-4">
-            {/* Learn Mode */}
             <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -366,7 +460,6 @@ export default function MatchPage() {
               <p className="text-sm opacity-90">ابدأ من جدول 3 وتقدم تدريجياً</p>
             </motion.button>
 
-            {/* Multiple Choice */}
             <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -379,20 +472,18 @@ export default function MatchPage() {
               <p className="text-sm opacity-90">اختر جميع المعادلات الصحيحة</p>
             </motion.button>
 
-            {/* Find Another */}
             <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              onClick={() => startMode('find-another')}
+              onClick={() => startMode('complete-group')}
               className="bg-gradient-to-br from-purple-500 to-purple-600 text-white p-6 rounded-2xl text-right shadow-lg hover:scale-105 transition-transform"
             >
-              <span className="text-4xl mb-3 block">🔍</span>
-              <h3 className="text-xl font-bold mb-2">أوجد معادلة أخرى</h3>
-              <p className="text-sm opacity-90">ابحث عن معادلة أخرى تعطي نفس الناتج</p>
+              <span className="text-4xl mb-3 block">📦</span>
+              <h3 className="text-xl font-bold mb-2">تجميع المعادلات</h3>
+              <p className="text-sm opacity-90">ضع كل معادلة في مجموعتها الصحيحة</p>
             </motion.button>
 
-            {/* Matching */}
             <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -405,7 +496,6 @@ export default function MatchPage() {
               <p className="text-sm opacity-90">طابق المعادلة مع الناتج</p>
             </motion.button>
 
-            {/* Timed Challenge */}
             <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -455,16 +545,124 @@ export default function MatchPage() {
     );
   }
 
+  // Complete Group Mode
+  if (mode === 'complete-group') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white py-8">
+        <div className="max-w-5xl mx-auto px-4">
+          <div className="flex justify-between items-center mb-6">
+            <button onClick={() => setMode('select')} className="text-purple-600 hover:text-purple-700 font-medium">
+              ← العودة
+            </button>
+            <div className="flex items-center gap-2">
+              <Star className="w-5 h-5 text-yellow-500" />
+              <span className="font-bold text-purple-600">{score}</span>
+            </div>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="bg-white rounded-3xl shadow-lg p-6"
+          >
+            <h2 className="text-2xl font-bold text-center text-purple-700 mb-4">تجميع المعادلات</h2>
+            <p className="text-center text-gray-600 mb-4">اسحب كل معادلة إلى المجموعة التي تعطي نفس الناتج</p>
+
+            {/* Warning Message */}
+            {warningMessage && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-50 border-2 border-red-300 rounded-xl p-3 mb-4 flex items-center gap-2"
+              >
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+                <span className="text-red-700 font-medium">{warningMessage}</span>
+              </motion.div>
+            )}
+
+            {/* Groups */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+              {groups.map((group) => (
+                <div
+                  key={group.target}
+                  className="bg-purple-50 rounded-2xl p-4 border-2 border-purple-200 min-h-[150px]"
+                  onClick={() => selectedEquation && handleDropEquation(group.target)}
+                >
+                  <div className="text-center mb-3">
+                    <span className="text-2xl font-bold text-purple-600">{group.target}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {group.equations.map((eq, idx) => (
+                      <div
+                        key={idx}
+                        className="bg-green-100 text-green-700 px-3 py-2 rounded-lg text-center font-medium"
+                      >
+                        {eq.equation} = {eq.result}
+                      </div>
+                    ))}
+                  </div>
+                  {selectedEquation && (
+                    <div className="mt-2 text-center text-xs text-purple-500">
+                      انقر للإضافة
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Available Equations */}
+            <div className="bg-gray-50 rounded-2xl p-4">
+              <h3 className="font-bold text-gray-700 mb-3">المعادلات المتاحة:</h3>
+              <div className="flex flex-wrap gap-2">
+                {availableEquations.map((eq, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setSelectedEquation(eq)}
+                    className={`px-4 py-2 rounded-xl font-medium transition-all ${
+                      selectedEquation?.equation === eq.equation
+                        ? 'bg-purple-500 text-white scale-105'
+                        : 'bg-white border border-gray-200 hover:bg-purple-50'
+                    }`}
+                  >
+                    {eq.equation}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => {
+                  const anyEmpty = groups.some(g => g.equations.length === 0);
+                  if (anyEmpty || availableEquations.length > 0) {
+                    setWarningMessage('أكمل تجميع جميع المعادلات أولاً');
+                  } else {
+                    setGameComplete(true);
+                    updateStars(score + groups.length);
+                  }
+                }}
+                className="bg-purple-500 hover:bg-purple-600 text-white px-6 py-3 rounded-xl font-bold"
+              >
+                تحقق
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
   // Matching Game Mode
   if (mode === 'matching') {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-teal-50 to-white py-8">
+      <div className="min-h-screen bg-gradient-to-b from-pink-50 to-white py-8">
         <div className="max-w-4xl mx-auto px-4">
           <div className="flex justify-between items-center mb-6">
-            <button onClick={() => setMode('select')} className="text-teal-600 hover:text-teal-700 font-medium">
+            <button onClick={() => setMode('select')} className="text-pink-600 hover:text-pink-700 font-medium">
               ← العودة
             </button>
-            <span className="text-teal-600 font-bold">الأزواج: {matches}/4</span>
+            <span className="text-pink-600 font-bold">الأزواج: {matches}/4</span>
           </div>
 
           <motion.div
@@ -473,6 +671,7 @@ export default function MatchPage() {
             className="bg-white rounded-3xl shadow-lg p-6"
           >
             <h2 className="text-2xl font-bold text-center text-pink-700 mb-6">مطابقة المعادلة مع الناتج</h2>
+            <p className="text-center text-gray-500 mb-4">الهدف: {currentTarget}</p>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {matchingCards.map((card) => (
@@ -489,7 +688,7 @@ export default function MatchPage() {
                   whileHover={{ scale: card.matched || card.flipped ? 1 : 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  {card.flipped || card.matched ? card.content : '?'}
+                  {card.flipped || card.matched ? card.equation.equation : '?'}
                 </motion.button>
               ))}
             </div>
@@ -499,7 +698,63 @@ export default function MatchPage() {
     );
   }
 
-  // Main Activity Display
+  // Timed Mode
+  if (mode === 'timed') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-amber-50 to-white py-8">
+        <div className="max-w-4xl mx-auto px-4">
+          <div className="flex justify-between items-center mb-6">
+            <button onClick={() => setMode('select')} className="text-amber-600 hover:text-amber-700 font-medium">
+              ← العودة
+            </button>
+            <div className="flex items-center gap-4">
+              <div className={`flex items-center gap-1 ${timeLeft <= 10 ? 'text-red-500' : 'text-gray-600'}`}>
+                <span className="font-bold text-xl">{timeLeft}s</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Star className="w-5 h-5 text-yellow-500" />
+                <span className="font-bold text-amber-600">{timedCorrect}</span>
+              </div>
+            </div>
+          </div>
+
+          <motion.div
+            key={questionNumber}
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="bg-white rounded-3xl shadow-lg p-6"
+          >
+            <div className="text-center mb-6">
+              <p className="text-lg text-gray-600 mb-2">اختر المعادلة التي ناتجها:</p>
+              <div className="inline-block bg-gradient-to-r from-amber-500 to-amber-600 text-white px-8 py-4 rounded-2xl text-4xl font-bold shadow-lg">
+                {currentTarget}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {currentOptions.map((eq) => {
+                // COMPUTE actual result for validation display
+                const computedResult = eq.a * eq.b;
+                const isCorrect = computedResult === currentTarget;
+
+                return (
+                  <button
+                    key={eq.equation}
+                    onClick={() => handleTimedAnswer(eq.equation)}
+                    className="p-4 bg-amber-100 hover:bg-amber-200 rounded-xl text-xl font-bold transition-all"
+                  >
+                    {eq.equation}
+                  </button>
+                );
+              })}
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
+
+  // Learn/Multiple Choice Mode
   return (
     <div className="min-h-screen bg-gradient-to-b from-teal-50 to-white py-8">
       <div className="max-w-4xl mx-auto px-4">
@@ -507,35 +762,28 @@ export default function MatchPage() {
           <button onClick={() => setMode('select')} className="text-teal-600 hover:text-teal-700 font-medium">
             ← العودة
           </button>
-          <div className="flex items-center gap-4">
-            {mode === 'timed' && (
-              <div className={`flex items-center gap-1 ${timeLeft <= 10 ? 'text-red-500' : 'text-gray-600'}`}>
-                <span className="font-bold">{timeLeft}s</span>
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Star className="w-5 h-5 text-yellow-500" />
-              <span className="font-bold text-teal-600">{mode === 'timed' ? timedCorrect : score}</span>
-            </div>
+          <div className="flex items-center gap-2">
+            <Star className="w-5 h-5 text-yellow-500" />
+            <span className="font-bold text-teal-600">{score}</span>
           </div>
         </div>
 
         <AnimatePresence mode="wait">
           <motion.div
-            key={currentIndex}
+            key={currentTarget}
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             className="bg-white rounded-3xl shadow-lg p-6 md:p-8 border border-teal-100"
           >
             {/* Progress */}
-            {mode !== 'timed' && (
-              <div className="flex justify-between items-center mb-4">
-                <span className="text-gray-500 text-sm">
-                  {mode === 'learn' ? `المستوى ${learningIndex + 1} من ${learningProgression.length}` : `السؤال ${currentIndex + 1} من ${questions.length}`}
-                </span>
-              </div>
-            )}
+            <div className="flex justify-between items-center mb-4">
+              <span className="text-gray-500 text-sm">
+                {mode === 'learn'
+                  ? `المستوى ${learningIndex + 1} من ${learningProgression.length}`
+                  : `السؤال ${questionNumber + 1} من 5`}
+              </span>
+            </div>
 
             {/* Learning Info */}
             {mode === 'learn' && (
@@ -546,56 +794,18 @@ export default function MatchPage() {
 
             {/* Target */}
             <div className="text-center mb-6">
-              <p className="text-lg text-gray-600 mb-2">
-                {mode === 'find-another' ? 'أوجد معادلة أخرى تعطي الناتج:' : 'اختر جميع المعادلات التي ناتجها:'}
-              </p>
+              <p className="text-lg text-gray-600 mb-2">اختر جميع المعادلات التي ناتجها:</p>
               <div className="inline-block bg-gradient-to-r from-teal-500 to-teal-600 text-white px-8 py-4 rounded-2xl text-4xl font-bold shadow-lg">
-                {currentQuestion.target}
+                {currentTarget}
               </div>
             </div>
 
-            {/* Find Another Mode - Show given equation */}
-            {mode === 'find-another' && currentQuestion.equations[0] && (
-              <div className="text-center mb-6">
-                <p className="text-gray-600 mb-2">المعادلة المعطاة:</p>
-                <div className="inline-block bg-purple-100 text-purple-700 px-6 py-3 rounded-xl text-2xl font-bold">
-                  {currentQuestion.equations[0].equation} = {currentQuestion.target}
-                </div>
-                <div className="mt-4 flex justify-center gap-2">
-                  <input
-                    type="number"
-                    min="1" max="12"
-                    placeholder="؟"
-                    className="w-16 text-xl text-center border-2 border-purple-300 rounded-lg p-2"
-                    onChange={(e) => setFindAnotherInput(findAnotherInput.split('×').length === 2 ? `${e.target.value}×${findAnotherInput.split('×')[1]}` : e.target.value)}
-                  />
-                  <span className="text-2xl self-center">×</span>
-                  <input
-                    type="number"
-                    min="1" max="12"
-                    placeholder="؟"
-                    className="w-16 text-xl text-center border-2 border-purple-300 rounded-lg p-2"
-                    onChange={(e) => {
-                      const parts = findAnotherInput.split('×');
-                      setFindAnotherInput(`${parts[0] || ''}×${e.target.value}`);
-                    }}
-                  />
-                </div>
-                <button
-                  onClick={handleFindAnother}
-                  className="mt-4 bg-purple-500 hover:bg-purple-600 text-white px-6 py-2 rounded-xl font-bold"
-                >
-                  تحقق
-                </button>
-              </div>
-            )}
-
-            {/* Multiple/Learn Mode - Interactive Checkboxes */}
-            {(mode === 'multiple' || mode === 'learn') && !showResult && (
+            {/* Options - Interactive Checkboxes */}
+            {!showResult && (
               <div className="grid grid-cols-2 gap-4 mb-6">
-                {currentQuestion.equations.map((eq, idx) => (
+                {currentOptions.map((eq) => (
                   <motion.button
-                    key={idx}
+                    key={eq.equation}
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={() => handleToggle(eq.equation)}
@@ -615,15 +825,17 @@ export default function MatchPage() {
             )}
 
             {/* Result Display */}
-            {(mode === 'multiple' || mode === 'learn') && showResult && (
+            {showResult && (
               <div className="grid grid-cols-2 gap-4 mb-6">
-                {currentQuestion.equations.map((eq, idx) => {
+                {currentOptions.map((eq) => {
                   const isSelected = selections.has(eq.equation);
-                  const isCorrect = eq.isCorrect;
+                  // CRITICAL: COMPUTE actual result - NEVER use index
+                  const computedResult = eq.a * eq.b;
+                  const isCorrect = computedResult === currentTarget;
 
                   return (
                     <div
-                      key={idx}
+                      key={eq.equation}
                       className={`p-4 rounded-2xl border-2 ${
                         isCorrect
                           ? 'bg-green-100 border-green-400 text-green-700'
@@ -636,55 +848,42 @@ export default function MatchPage() {
                         {isCorrect ? <Check className="w-6 h-6" /> : isSelected && <X className="w-6 h-6" />}
                         {eq.equation}
                       </div>
-                      {isCorrect && <div className="text-sm text-center mt-1">= {currentQuestion.target}</div>}
+                      <div className="text-sm text-center mt-1">
+                        {isCorrect
+                          ? `= ${computedResult}`
+                          : `= ${computedResult} (ليس ${currentTarget})`}
+                      </div>
                     </div>
                   );
                 })}
               </div>
             )}
 
-            {/* Timed Mode */}
-            {mode === 'timed' && (
-              <div className="grid grid-cols-2 gap-4">
-                {currentQuestion.equations.map((eq, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => handleTimedAnswer(eq.equation)}
-                    className="p-4 md:p-6 bg-teal-100 hover:bg-teal-200 rounded-2xl border-2 border-teal-200 text-teal-700 text-2xl font-bold transition-all"
-                  >
-                    {eq.equation}
-                  </button>
-                ))}
-              </div>
-            )}
-
             {/* Actions */}
-            {(mode === 'multiple' || mode === 'learn') && (
-              <div className="flex justify-center gap-4 mt-6">
-                {!showResult ? (
-                  <button
-                    onClick={handleCheck}
-                    disabled={selections.size === 0}
-                    className="bg-teal-500 hover:bg-teal-600 disabled:bg-gray-300 text-white px-8 py-3 rounded-xl font-bold text-lg transition-colors disabled:cursor-not-allowed"
-                  >
-                    تحقق
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleNext}
-                    className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-3 rounded-xl font-bold text-lg transition-colors"
-                  >
-                    {mode === 'learn'
-                      ? learningIndex < learningProgression.length - 1
-                        ? 'التالي'
-                        : 'إنهاء'
-                      : currentIndex < questions.length - 1
+            <div className="flex justify-center gap-4 mt-6">
+              {!showResult ? (
+                <button
+                  onClick={handleCheck}
+                  disabled={selections.size === 0}
+                  className="bg-teal-500 hover:bg-teal-600 disabled:bg-gray-300 text-white px-8 py-3 rounded-xl font-bold text-lg transition-colors disabled:cursor-not-allowed"
+                >
+                  تحقق
+                </button>
+              ) : (
+                <button
+                  onClick={handleNext}
+                  className="bg-teal-500 hover:bg-teal-600 text-white px-8 py-3 rounded-xl font-bold text-lg transition-colors"
+                >
+                  {mode === 'learn'
+                    ? learningIndex < learningProgression.length - 1
                       ? 'التالي'
-                      : 'النتيجة'}
-                  </button>
-                )}
-              </div>
-            )}
+                      : 'إنهاء'
+                    : questionNumber < 4
+                    ? 'التالي'
+                    : 'النتيجة'}
+                </button>
+              )}
+            </div>
           </motion.div>
         </AnimatePresence>
 
@@ -697,7 +896,7 @@ export default function MatchPage() {
         >
           <h3 className="font-bold text-teal-800 mb-2">💡 نصيحة</h3>
           <p className="text-teal-700">
-            قد يكون للعدد نفسه عدة أزواج من العوامل. مثلاً: 24 = 2×12 = 3×8 = 4×6 = 6×4 = 8×3 = 12×2
+            قد يكون للعدد نفسه عدة أزواج من العوامل. تحقق دائماً من: عامل₁ × عامل₂ = الناتج
           </p>
         </motion.div>
       </div>
