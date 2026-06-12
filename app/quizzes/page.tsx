@@ -43,36 +43,47 @@ export default function QuizzesPage() {
 
       if (quizMode === 'multiple') {
         const options = new Set<number>([answer]);
-        while (options.size < 4) {
-          const offset = Math.floor(Math.random() * 20) - 10;
-          const wrong = Math.max(1, answer + offset);
+        let attempts = 0;
+        while (options.size < 4 && attempts < 50) {
+          const maxOffset = answer > 100 ? 30 : answer > 50 ? 20 : 12;
+          const offset = Math.floor(Math.random() * maxOffset * 2) - maxOffset;
+          const wrong = Math.max(1, Math.min(144, answer + offset));
           if (wrong !== answer && wrong > 0) {
             options.add(wrong);
           }
+          attempts++;
         }
         qs.push({ a, b, answer, options: shuffleArray(Array.from(options)) });
       } else if (quizMode === 'truefalse') {
         const isTrue = Math.random() > 0.35;
-        const displayAnswer = isTrue
-          ? answer
-          : answer + (Math.random() > 0.5 ? Math.floor(Math.random() * 5) + 1 : -Math.floor(Math.random() * 5) - 1);
+        let displayAnswer = answer;
+        if (!isTrue) {
+          // Generate a wrong answer that's close but not equal
+          const offset = Math.floor(Math.random() * 10) + 1;
+          displayAnswer = Math.random() > 0.5 ? answer + offset : Math.max(1, answer - offset);
+          // Make sure it doesn't accidentally match
+          if (displayAnswer === answer) displayAnswer = answer + 1;
+        }
         qs.push({
           a,
           b,
           answer,
-          displayAnswer: displayAnswer > 0 ? displayAnswer : answer + 3,
+          displayAnswer: displayAnswer,
           isTrue: displayAnswer === answer,
         });
       } else if (quizMode === 'fillblank') {
         qs.push({ a, b, answer });
       } else if (quizMode === 'timed') {
         const options = new Set<number>([answer]);
-        while (options.size < 4) {
-          const offset = Math.floor(Math.random() * 20) - 10;
-          const wrong = Math.max(1, answer + offset);
+        let attempts = 0;
+        while (options.size < 4 && attempts < 50) {
+          const maxOffset = answer > 100 ? 30 : answer > 50 ? 20 : 12;
+          const offset = Math.floor(Math.random() * maxOffset * 2) - maxOffset;
+          const wrong = Math.max(1, Math.min(144, answer + offset));
           if (wrong !== answer && wrong > 0) {
             options.add(wrong);
           }
+          attempts++;
         }
         qs.push({ a, b, answer, options: shuffleArray(Array.from(options)) });
       }

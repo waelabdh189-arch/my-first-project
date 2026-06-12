@@ -185,10 +185,14 @@ function WheelGame({ onScore, reset }: { onScore: (points: number) => void; rese
 
   const options = useMemo(() => {
     const opts = new Set<number>([question.answer]);
-    while (opts.size < 4 && question.answer > 0) {
-      const offset = Math.floor(Math.random() * Math.max(question.answer, 12)) - Math.floor(Math.max(question.answer, 12) / 2);
-      const wrong = Math.max(1, question.answer + offset);
-      if (wrong !== question.answer) opts.add(wrong);
+    let attempts = 0;
+    while (opts.size < 4 && attempts < 50) {
+      // For large answers (like 12×12=144), use smaller offsets
+      const maxOffset = question.answer > 100 ? 30 : question.answer > 50 ? 20 : 12;
+      const offset = Math.floor(Math.random() * maxOffset * 2) - maxOffset;
+      const wrong = Math.max(1, Math.min(144, question.answer + offset));
+      if (wrong !== question.answer && wrong > 0) opts.add(wrong);
+      attempts++;
     }
     return shuffleArray(Array.from(opts));
   }, [question.answer]);
@@ -428,10 +432,13 @@ function BalloonGame({ onScore, reset }: { onScore: (points: number) => void; re
     const answer = a * b;
 
     const opts = new Set<number>([answer]);
-    while (opts.size < 6) {
-      const offset = Math.floor(Math.random() * Math.max(answer, 20)) - Math.floor(Math.max(answer, 20) / 2);
-      const wrong = Math.max(1, answer + offset);
+    let attempts = 0;
+    while (opts.size < 6 && attempts < 50) {
+      const maxOffset = answer > 100 ? 40 : answer > 50 ? 25 : 15;
+      const offset = Math.floor(Math.random() * maxOffset * 2) - maxOffset;
+      const wrong = Math.max(1, Math.min(144, answer + offset));
       if (wrong !== answer) opts.add(wrong);
+      attempts++;
     }
 
     const shuffled = shuffleArray(Array.from(opts));
@@ -542,10 +549,13 @@ function SpeedGame({ onScore, reset }: { onScore: (points: number) => void; rese
       const b = Math.floor(Math.random() * 12) + 1;
       const answer = a * b;
       const opts = new Set<number>([answer]);
-      while (opts.size < 4) {
-        const offset = Math.floor(Math.random() * Math.max(answer, 12)) - Math.floor(Math.max(answer, 12) / 2);
-        const wrong = Math.max(1, answer + offset);
+      let attempts = 0;
+      while (opts.size < 4 && attempts < 50) {
+        const maxOffset = answer > 100 ? 30 : answer > 50 ? 20 : 12;
+        const offset = Math.floor(Math.random() * maxOffset * 2) - maxOffset;
+        const wrong = Math.max(1, Math.min(144, answer + offset));
         if (wrong !== answer) opts.add(wrong);
+        attempts++;
       }
       qs.push({ q: [a, b], answer, options: shuffleArray(Array.from(opts)) });
     }

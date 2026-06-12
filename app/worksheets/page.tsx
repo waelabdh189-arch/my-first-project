@@ -2,7 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { FileText, Download, Printer, Image, FileImage } from 'lucide-react';
+import { FileText, Download, Printer, Image, FileImage, Sparkles } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import { useStudent } from '@/lib/student-context';
@@ -28,7 +28,7 @@ export default function WorksheetsPage() {
   };
 
   const generateWorksheet = () => {
-    const questionCount = difficulty === 'easy' ? 12 : difficulty === 'medium' ? 18 : 24;
+    const questionCount = difficulty === 'easy' ? 12 : difficulty === 'medium' ? 20 : 30;
     const qs: { a: number; b: number; answer: number }[] = [];
 
     for (let i = 0; i < questionCount; i++) {
@@ -153,7 +153,7 @@ export default function WorksheetsPage() {
 
             {/* Difficulty */}
             <div className="bg-white rounded-2xl shadow-md p-6">
-              <h3 className="font-bold text-gray-800 mb-4">مستوى الصعوبة:</h3>
+              <h3 className="font-bold text-gray-800 mb-4">عدد الأسئلة:</h3>
               <div className="flex gap-4">
                 {(['easy', 'medium', 'hard'] as const).map((level) => (
                   <button
@@ -165,7 +165,7 @@ export default function WorksheetsPage() {
                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     )}
                   >
-                    {level === 'easy' ? 'سهل (12)' : level === 'medium' ? 'متوسط (18)' : 'صعب (24)'}
+                    {level === 'easy' ? '12 سؤال' : level === 'medium' ? '20 سؤال' : '30 سؤال'}
                   </button>
                 ))}
               </div>
@@ -254,57 +254,102 @@ export default function WorksheetsPage() {
                 )}
               </div>
 
-              {/* Worksheet Content */}
+              {/* A4 Worksheet Preview */}
               <div
                 ref={worksheetRef}
-                className="border-2 border-gray-300 rounded-xl p-6 min-h-[600px] bg-white"
-                style={{ fontFamily: 'Cairo, sans-serif' }}
+                className="border-4 border-gray-300 rounded-lg overflow-hidden bg-white"
+                style={{
+                  fontFamily: 'Cairo, sans-serif',
+                  width: '100%',
+                  aspectRatio: '210/297',
+                  maxHeight: '70vh',
+                }}
               >
                 {!generated ? (
-                  <div className="flex items-center justify-center h-full text-gray-400">
-                    <p>اختر الجداول واضغط "إنشاء ورقة العمل"</p>
+                  <div className="flex items-center justify-center h-full text-gray-400 p-8 text-center">
+                    <div>
+                      <FileText className="w-16 h-16 mx-auto mb-4 opacity-30" />
+                      <p>اختر الجداول واضغط "إنشاء ورقة العمل"</p>
+                    </div>
                   </div>
                 ) : (
-                  <div className="min-h-full p-4" style={{ background: 'linear-gradient(transparent 39px, #e5e7eb 39px), linear-gradient(to right, #fee2e2 1px, transparent 1px)', backgroundSize: '100% 40px, 30px 100%' }}>
-                    {/* Header */}
-                    <div className="text-center mb-6 border-b-2 border-dashed pb-4">
-                      <div className="flex justify-around mb-4 text-sm text-gray-600">
-                        {studentName && <span>الطالب: {studentName}</span>}
-                        <span>التاريخ: {new Date().toLocaleDateString('ar')}</span>
-                        {teacherName && <span>المعلم: {teacherName}</span>}
+                  <div className="h-full flex flex-col p-4 md:p-6 text-right" dir="rtl">
+                    {/* Colorful Header */}
+                    <div className="bg-gradient-to-l from-pink-400 via-pink-300 to-yellow-300 rounded-xl p-3 md:p-4 mb-3 text-center shadow-lg">
+                      <h2 className="text-lg md:text-2xl font-bold text-white drop-shadow-md">{title}</h2>
+                      {schoolName && <p className="text-white/90 text-xs md:text-sm mt-1">{schoolName}</p>}
+                    </div>
+
+                    {/* Student Info Row */}
+                    <div className="grid grid-cols-3 gap-2 md:gap-4 mb-3 bg-sky-50 rounded-xl p-2 md:p-3 border border-sky-200">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">اسم الطالب</p>
+                        <div className="border-b-2 border-dashed border-gray-400 pb-1 text-xs md:text-sm font-medium">
+                          {studentName || '........................'}
+                        </div>
                       </div>
-                      <h2 className="text-2xl font-bold text-pink-600">{title}</h2>
-                      {schoolName && <p className="text-gray-500 mt-1">{schoolName}</p>}
-                      <p className="text-sm text-gray-500 mt-2">
-                        الجدول: {tables.join(' , ')} | المستوى: {difficultyLabel}
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">التاريخ</p>
+                        <div className="border-b-2 border-dashed border-gray-400 pb-1 text-xs md:text-sm">
+                          {new Date().toLocaleDateString('ar')}
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">اسم المعلم</p>
+                        <div className="border-b-2 border-dashed border-gray-400 pb-1 text-xs md:text-sm font-medium">
+                          {teacherName || '........................'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Instructions */}
+                    <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-2 md:p-3 mb-3">
+                      <p className="text-center text-xs md:text-sm text-yellow-800 font-medium">
+                        اكتب ناتج الضرب في الفراغ
+                      </p>
+                      <p className="text-center text-xs text-yellow-600 mt-1">
+                        الجداول: {tables.join(' - ')} | المستوى: {difficultyLabel}
                       </p>
                     </div>
 
-                    {/* Questions */}
-                    <div className="grid grid-cols-3 md:grid-cols-4 gap-3">
-                      {questions.map((q, idx) => (
-                        <div
-                          key={idx}
-                          className="bg-gray-50 rounded-lg px-4 py-3 border border-gray-200 text-center"
-                        >
-                          <span className="text-lg">
-                            {q.a} × {q.b} = <span className="text-gray-300">.....</span>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Footer */}
-                    <div className="mt-8 pt-4 border-t-2 border-dashed text-center">
-                      <div className="flex justify-around text-sm text-gray-500">
-                        <span>الدرجة: /{questions.length}</span>
-                        <span>التوقيع:</span>
+                    {/* Questions Grid */}
+                    <div className="flex-grow bg-gradient-to-b from-white to-gray-50 rounded-xl p-2 md:p-4 border-2 border-gray-200 overflow-auto">
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
+                        {questions.map((q, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-white rounded-lg px-2 md:px-3 py-2 border-2 border-gray-200"
+                          >
+                            <div className="flex items-center justify-between gap-1 text-sm md:text-base">
+                              <span className="text-xs text-gray-400 font-bold">{idx + 1}.</span>
+                              <span>
+                                {q.a} × {q.b} = <span className="inline-block w-8 md:w-12 border-b-2 border-dashed border-gray-500"></span>
+                              </span>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
 
-                    {/* Decorative elements */}
-                    <div className="mt-4 flex justify-center gap-4 text-2xl">
-                      ⭐ 🎓 ⭐
+                    {/* Footer */}
+                    <div className="mt-3 grid grid-cols-3 gap-2 md:gap-4 bg-gradient-to-l from-green-50 to-emerald-50 rounded-xl p-2 md:p-3 border-2 border-green-200">
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">الدرجة</p>
+                        <div className="text-sm md:text-lg font-bold text-green-600">______ / {questions.length}</div>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">النسبة</p>
+                        <div className="text-sm md:text-lg font-bold text-green-600">______%</div>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs text-gray-500 mb-1">توقيع المعلم</p>
+                        <div className="border-b-2 border-dashed border-gray-400 pb-1"></div>
+                      </div>
+                    </div>
+
+                    {/* Decorative Elements */}
+                    <div className="flex justify-center gap-1 md:gap-2 mt-2 text-xl md:text-2xl">
+                      ⭐ 🎓 ⭐ ⭐ 🎓 ⭐
                     </div>
                   </div>
                 )}
